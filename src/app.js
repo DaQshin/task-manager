@@ -2,30 +2,13 @@ const express = require('express');
 const morgan = require('morgan');
 const swaggerui = require('swagger-ui-express');
 const openapiSpec = require('./swagger');
+const db = require('./db/db.js');
 const app = express();
 
 app.use(express.json());
 app.use(morgan('dev'));
 
 app.use('/docs', swaggerui.serve, swaggerui.setup(openapiSpec));
-
-var tasks = [
-  {
-    id: 1,
-    title: 'Learn Express.js',
-    done: false,
-  },
-  {
-    id: 2,
-    title: 'Build Todo API',
-    done: true,
-  },
-  {
-    id: 3,
-    title: 'Write Swagger Documentation',
-    done: false,
-  },
-];
 
 /**
  * @swagger
@@ -74,22 +57,27 @@ app.get('/', (req, res) => {
  *                     $ref: '#/components/schemas/Task'
  */
 app.get('/tasks', (req, res) => {
-  let result = tasks;
+  db.all('SELECT * FROM TASKS', [], (err, result) => {
+    console.log('error :', err);
+    console.log('result :', result);
 
-  // ?done=true or ?done=false — filter by completion status
-  if (req.query.done !== undefined) {
-    const done = req.query.done === 'true';
-    result = result.filter((t) => t.done === done);
-  }
+    if (err) {
+      return res.status(500).json({ error: err });
+    }
 
-  // ?search=milk — case-insensitive substring match on title
-  if (req.query.search !== undefined) {
-    const term = req.query.search.toLowerCase();
-    result = result.filter((t) => t.title.toLowerCase().includes(term));
-  }
+    if (req.query.done !== undefined) {
+      const done = req.query.done == 'true';
+      result = result.filter((t) => t.done == done);
+    }
 
-  res.status(200).json({
-    tasks: result,
+    if (req.query.search !== undefined) {
+      const title = req.query.search.toLowerCase();
+      result = result.filter((t) => t.title.includes(title));
+    }
+
+    res.json({
+      result,
+    });
   });
 });
 
@@ -117,12 +105,21 @@ app.get('/tasks', (req, res) => {
  *                   example: 2
  */
 app.get('/stats', (req, res) => {
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.done).length;
-  res.status(200).json({
-    total,
-    done,
-    open: total - done,
+  db.all('SELECT * FROM TASKS', [], (err, result) => {
+    console.log('error :', err);
+    console.log('result :', result);
+
+    if (err) {
+      return res.status(500).json({ error: err });
+    }
+
+    const total = result.length;
+    const done = result.filter((t) => t.done == true).length;
+    res.json({
+      total,
+      done,
+      open: total - done,
+    });
   });
 });
 
@@ -152,11 +149,22 @@ app.get('/stats', (req, res) => {
  */
 app.get('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (id >= tasks.length)
-    res.status(404).json({ error: `Task ${id} not found` });
-  const task = tasks.find((t) => t.id === id);
-  res.status(200).json({
-    task,
+
+  db.get('SELECT * FROM TASKS WHERE id = ?', [id], (err, result) => {
+    console.log('error :', err);
+    console.log('result :', result);
+
+    if (err) {
+      return res.status(500).json({ error: err });
+    }
+
+    if (result) {
+      res.json({
+        result,
+      });
+    } else {
+      res.status(404).json({ error: `Task ${id} not found` });
+    }
   });
 });
 
@@ -180,8 +188,23 @@ app.get('/tasks/:id', (req, res) => {
 app.post('/tasks', (req, res) => {
   const title = req.body.title;
   if (title === '') res.status(400).json({});
-  tasks.push({ id: tasks.length, title, done: false });
-  res.status(201).json({ message: 'task added successfully' });
+
+  const stmt = db.prepare('INSERT INTO TASKS (title, done) VALUES (? , ?)');
+  stmt.run(title, false, (err) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    stmt.finalize((err) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      res.status(201).json({
+        message: 'task added successfully',
+      });
+    });
+  });
 });
 
 /**
