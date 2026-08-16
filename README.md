@@ -1,8 +1,32 @@
 # to-do-list
 
-A minimal, in-memory Task API built with Express 5. Tasks live in a plain
-JS array in memory, and the API is self-documented via
-Swagger UI at `/docs`, backed by `docs/openapi.json`.
+# To-Do List API
+
+A minimal Task API built with **Express 5** and **SQLite**. Tasks are stored in a SQLite database, so they persist when the server is restarted.
+
+The API is self-documented with **Swagger UI** and provides endpoints for creating, reading, updating, and deleting tasks.
+
+## Features
+
+- Express 5 REST API
+- SQLite database persistence
+- Automatic database creation
+- Automatic table creation
+- Three automatically seeded tasks
+- Create, read, update, and delete tasks
+- Filter tasks by completion status
+- Search tasks by title
+- Swagger API documentation
+- Morgan HTTP request logging
+
+## Why SQLite?
+
+SQLite was chosen because it is simple and lightweight for this project.
+
+- **Single file:** The entire database is stored in one `.db` file.
+- **Zero setup:** No separate database server or configuration is required.
+- **Survives restarts:** Tasks remain stored after the Express server is stopped and restarted.
+- **Simple:** SQLite is easy to use for a small Task API.
 
 ## Install & Run
 
