@@ -1,27 +1,14 @@
-'use strict';
-
-/**
- * Task API
- *
- * A simple in-memory REST API built with Express.
- *
- */
-
 const express = require('express');
 const morgan = require('morgan');
 const swaggerui = require('swagger-ui-express');
-const openapi = require('../docs/openapi.json');
+const openapiSpec = require('./swagger');
 const app = express();
 
 app.use(express.json());
 app.use(morgan('dev'));
 
-app.use('/docs', swaggerui.serve, swaggerui.setup(openapi));
+app.use('/docs', swaggerui.serve, swaggerui.setup(openapiSpec));
 
-/**
- * In-memory task store. Reset on every server restart.
- * @type {Array<{ id: number, title: string, done: boolean }>}
- */
 var tasks = [
   {
     id: 1,
@@ -40,6 +27,15 @@ var tasks = [
   },
 ];
 
+/**
+ * @swagger
+ * /:
+ *   get:
+ *     summary: API information
+ *     responses:
+ *       200:
+ *         description: API metadata
+ */
 app.get('/', (req, res) => {
   res
     .status(200)
@@ -47,34 +43,112 @@ app.get('/', (req, res) => {
 });
 
 /**
- * @route GET /tasks
- * @param {express.Request} req
- * @param {express.Response} res
- * @returns {void} 200 with `{ tasks }`
+ * @swagger
+ * /tasks:
+ *   get:
+ *     summary: Get all tasks
+ *     parameters:
+ *       - in: query
+ *         name: done
+ *         schema:
+ *           type: boolean
+ *         required: false
+ *         description: Filter by completion status
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Case-insensitive substring match on title
+ *     responses:
+ *       200:
+ *         description: Returns all tasks
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tasks:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Task'
  */
 app.get('/tasks', (req, res) => {
   let result = tasks;
 
+  // ?done=true or ?done=false — filter by completion status
   if (req.query.done !== undefined) {
     const done = req.query.done === 'true';
-    result = result.filter((r) => r.done === done);
+    result = result.filter((t) => t.done === done);
   }
 
+  // ?search=milk — case-insensitive substring match on title
   if (req.query.search !== undefined) {
     const term = req.query.search.toLowerCase();
-    result = result.filter((r) => r.title.toLowerCase().includes(term));
+    result = result.filter((t) => t.title.toLowerCase().includes(term));
   }
 
   res.status(200).json({
-    result,
+    tasks: result,
   });
 });
 
 /**
- * @route GET /tasks/:id
- * @param {express.Request} req
- * @param {express.Response} res
- * @returns {void} 200 with `{ task }`, or 404 if not found
+ * @swagger
+ * /stats:
+ *   get:
+ *     summary: Task counts
+ *     responses:
+ *       200:
+ *         description: Total, done, and open task counts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   example: 3
+ *                 done:
+ *                   type: integer
+ *                   example: 1
+ *                 open:
+ *                   type: integer
+ *                   example: 2
+ */
+app.get('/stats', (req, res) => {
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.done).length;
+  res.status(200).json({
+    total,
+    done,
+    open: total - done,
+  });
+});
+
+/**
+ * @swagger
+ * /tasks/{id}:
+ *   get:
+ *     summary: Get task by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Task found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 task:
+ *                   $ref: '#/components/schemas/Task'
+ *       404:
+ *         description: Task not found
  */
 app.get('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -87,10 +161,21 @@ app.get('/tasks/:id', (req, res) => {
 });
 
 /**
- * @route POST /tasks
- * @param {express.Request} req - body: `{ title: string }`
- * @param {express.Response} res
- * @returns {void} 201 on success, 400 if `title` is empty
+ * @swagger
+ * /tasks:
+ *   post:
+ *     summary: Create a new task
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/NewTask'
+ *     responses:
+ *       201:
+ *         description: Task created
+ *       400:
+ *         description: Invalid request
  */
 app.post('/tasks', (req, res) => {
   const title = req.body.title;
@@ -100,10 +185,29 @@ app.post('/tasks', (req, res) => {
 });
 
 /**
- * @route PUT /tasks/:id
- * @param {express.Request} req - body: `{ title?: string, done?: boolean }`
- * @param {express.Response} res
- * @returns {void} 202 on success, 400 if fields missing, 404 if not found
+ * @swagger
+ * /tasks/{id}:
+ *   put:
+ *     summary: Update an existing task
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateTask'
+ *     responses:
+ *       202:
+ *         description: Task updated
+ *       400:
+ *         description: Invalid request
+ *       404:
+ *         description: Task not found
  */
 app.put('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -124,10 +228,21 @@ app.put('/tasks/:id', (req, res) => {
 });
 
 /**
- * @route DELETE /tasks/:id
- * @param {express.Request} req
- * @param {express.Response} res
- * @returns {void} 204 on success, 404 if not found
+ * @swagger
+ * /tasks/{id}:
+ *   delete:
+ *     summary: Delete a task
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       204:
+ *         description: Task deleted
+ *       404:
+ *         description: Task not found
  */
 app.delete('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -136,21 +251,14 @@ app.delete('/tasks/:id', (req, res) => {
   res.status(204).json({});
 });
 
-app.get('/stats', (req, res) => {
-  let stats = {
-    total: tasks.length,
-    done: tasks.filter((r) => r.done === true),
-    pending: tasks.filter((r) => r.done !== true),
-  };
-
-  res.json(stats);
-});
-
 /**
- * @route GET /health
- * @param {express.Request} req
- * @param {express.Response} res
- * @returns {void} 200 with `{ status: 'ok' }`
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check
+ *     responses:
+ *       200:
+ *         description: Server is healthy
  */
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
