@@ -234,20 +234,51 @@ app.post('/tasks', (req, res) => {
  */
 app.put('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (id >= 0 && id >= tasks.length) res.status(404).json({});
   const title = req.body.title;
   const done = req.body.done;
 
-  if (title === undefined || done === undefined) res.status(400).json({});
+  if (title === undefined && done === undefined) res.status(400).json({});
 
-  if (title != undefined) {
-    tasks[id].title = title;
-  }
-  if (done != undefined) {
-    tasks[id].done = done;
-  }
+  db.get('SELECT * FROM TASKS WHERE id = ?', [id], (err, result) => {
+    console.log('error :', err);
+    console.log('result :', result);
 
-  res.status(202).json({});
+    if (err) {
+      return res.status(500).json({ error: err });
+    }
+
+    const stmt_title = db.prepare('UPDATE TASKS SET title = ? WHERE id = ?');
+    const stmt_done = db.prepare('UPDATE TASKS SET done = ? WHERE id = ?');
+
+    if (title != undefined) {
+      stmt_title.run(title, id, (err) => {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+
+        stmt_title.finalize((err) => {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+        });
+      });
+    }
+    if (done != undefined) {
+      stmt_done.run(done, id, (err) => {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+
+        stmt_done.finalize((err) => {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+        });
+      });
+    }
+
+    res.status(202).json({ message: 'data updated successfully' });
+  });
 });
 
 /**
@@ -269,9 +300,22 @@ app.put('/tasks/:id', (req, res) => {
  */
 app.delete('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (id >= 0 && id >= tasks.length) res.status(404).json({});
-  tasks.splice(id, 1);
-  res.status(204).json({});
+  db.get('SELECT * FROM TASKS WHERE id = ?', [id], (err, result) => {
+    console.log('error :', err);
+    console.log('result :', result);
+
+    if (err) {
+      return res.status(500).json({ error: err });
+    }
+
+    db.run('DELETE FROM TASKS WHERE id = ?', [id], (err) => {
+      console.log('error :', err);
+      if (err) {
+        return res.status(500).json({ error: err });
+      }
+      res.status(204).json({ message: 'data removed from the db' });
+    });
+  });
 });
 
 /**
