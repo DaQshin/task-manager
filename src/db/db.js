@@ -4,7 +4,7 @@ const dotenv = require('dotenv').config();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 class SQLOperations {
-  static async init() {
+  static async init(seed = true) {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS tasks (
         id SERIAL PRIMARY KEY,
@@ -13,30 +13,32 @@ class SQLOperations {
       )
     `);
 
-    const { rows } = await pool.query('SELECT COUNT(*) AS count FROM tasks');
+    if (seed) {
+      const { rows } = await pool.query('SELECT COUNT(*) AS count FROM tasks');
 
-    if (Number(rows[0].count) === 0) {
-      await pool.query(
-        `
+      if (Number(rows[0].count) === 0) {
+        await pool.query(
+          `
         INSERT INTO tasks (title, done)
         VALUES
           ($1, $2),
           ($3, $4),
           ($5, $6)
       `,
-        [
-          'Buy groceries',
-          false,
-          'Write PostgreSQL notes',
-          true,
-          'Walk the dog',
-          false,
-        ],
-      );
+          [
+            'Buy groceries',
+            false,
+            'Write PostgreSQL notes',
+            true,
+            'Walk the dog',
+            false,
+          ],
+        );
 
-      console.log('Seeded 3 example tasks');
-    } else {
-      console.log(`Table already has ${rows[0].count} rows — skipping seed`);
+        console.log('Seeded 3 example tasks');
+      } else {
+        console.log(`Table already has ${rows[0].count} rows — skipping seed`);
+      }
     }
   }
 
@@ -46,10 +48,18 @@ class SQLOperations {
   }
 
   static async getOne(id) {
-    const { rows } = await pool.query(`SELCET * FROM tasks WHERE id = $1`, [
+    const { rows } = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [
       id,
     ]);
     return rows[0];
+  }
+
+  static async getByColumn(title, done) {
+    const { rows } = await pool.query(
+      `SELECT * FROM tasks WHERE title=COALESCE($1, title) done=COALESCE($2, done) RETURNING *`,
+    );
+
+    return rows;
   }
 
   static async createOne(title) {
@@ -66,12 +76,25 @@ class SQLOperations {
       `UPDATE tasks SET title=COALESCE($1, title) done=COALESCE($2, done) WHERE id=$3 RETURNING *`,
       [title, done, id],
     );
+
     return rows[0];
   }
 
   static async deleteOne(id) {
-    const { rows } = await pool.query(`DELETE FROM tasks WHERE id = $1`, [id]);
+    const { rows } = await pool.query(
+      `DELETE FROM tasks WHERE id = $1 RETURNING *`,
+      [id],
+    );
     return rows[0];
+  }
+
+  static async sort(sortBy = 'ASC', orderBy = 'id') {
+    const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY $1 $2`, [
+      sortBy,
+      orderBy,
+    ]);
+
+    return rows;
   }
 }
 

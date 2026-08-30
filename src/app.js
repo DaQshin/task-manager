@@ -2,7 +2,7 @@ const express = require('express');
 const morgan = require('morgan');
 const swaggerui = require('swagger-ui-express');
 const openapiSpec = require('./swagger');
-const db = require('./db/db.js');
+const { SQLOperations } = require('./db/db.js');
 const app = express();
 
 app.use(express.json());
@@ -56,28 +56,12 @@ app.get('/', (req, res) => {
  *                   items:
  *                     $ref: '#/components/schemas/Task'
  */
-app.get('/tasks', (req, res) => {
-  db.all('SELECT * FROM TASKS', [], (err, result) => {
-    console.log('error :', err);
-    console.log('result :', result);
+app.get('/tasks', async (req, res) => {
+  const queryObj = new APIFeatures(req.query);
 
-    if (err) {
-      return res.status(500).json({ error: err });
-    }
-
-    if (req.query.done !== undefined) {
-      const done = req.query.done == 'true';
-      result = result.filter((t) => t.done == done);
-    }
-
-    if (req.query.search !== undefined) {
-      const title = req.query.search.toLowerCase();
-      result = result.filter((t) => t.title.includes(title));
-    }
-
-    res.json({
-      result,
-    });
+  const row = await SQLOperations.getAll();
+  res.json({
+    result: row,
   });
 });
 
@@ -104,22 +88,14 @@ app.get('/tasks', (req, res) => {
  *                   type: integer
  *                   example: 2
  */
-app.get('/stats', (req, res) => {
-  db.all('SELECT * FROM TASKS', [], (err, result) => {
-    console.log('error :', err);
-    console.log('result :', result);
-
-    if (err) {
-      return res.status(500).json({ error: err });
-    }
-
-    const total = result.length;
-    const done = result.filter((t) => t.done == true).length;
-    res.json({
-      total,
-      done,
-      open: total - done,
-    });
+app.get('/stats', async (req, res) => {
+  const row = await SQLOperations.getAll();
+  const total = row.length;
+  const done = row.filter((r) => row.done === true).length;
+  res.json({
+    total,
+    done,
+    open: total - done,
   });
 });
 
@@ -147,24 +123,10 @@ app.get('/stats', (req, res) => {
  *       404:
  *         description: Task not found
  */
-app.get('/tasks/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-
-  db.get('SELECT * FROM TASKS WHERE id = ?', [id], (err, result) => {
-    console.log('error :', err);
-    console.log('result :', result);
-
-    if (err) {
-      return res.status(500).json({ error: err });
-    }
-
-    if (result) {
-      res.json({
-        result,
-      });
-    } else {
-      res.status(404).json({ error: `Task ${id} not found` });
-    }
+app.get('/tasks/:id', async (req, res) => {
+  const row = await SQLOperations.getOne(req.params.id);
+  res.json({
+    result: row,
   });
 });
 
@@ -185,26 +147,16 @@ app.get('/tasks/:id', (req, res) => {
  *       400:
  *         description: Invalid request
  */
-app.post('/tasks', (req, res) => {
-  const title = req.body.title;
-  if (title === '') res.status(400).json({});
-
-  const stmt = db.prepare('INSERT INTO TASKS (title, done) VALUES (? , ?)');
-  stmt.run(title, false, (err) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-
-    stmt.finalize((err) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-
-      res.status(201).json({
-        message: 'task added successfully',
-      });
+app.post('/tasks', async (req, res) => {
+  try {
+    const row = await SQLOperations.createOne(req.body.title);
+    res.status(201).json({ row });
+  } catch (e) {
+    res.status(400).json({
+      error: 'Data creation failed.',
+      stacktrace: e,
     });
-  });
+  }
 });
 
 /**
@@ -232,53 +184,20 @@ app.post('/tasks', (req, res) => {
  *       404:
  *         description: Task not found
  */
-app.put('/tasks/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const title = req.body.title;
-  const done = req.body.done;
-
-  if (title === undefined && done === undefined) res.status(400).json({});
-
-  db.get('SELECT * FROM TASKS WHERE id = ?', [id], (err, result) => {
-    console.log('error :', err);
-    console.log('result :', result);
-
-    if (err) {
-      return res.status(500).json({ error: err });
-    }
-
-    const stmt_title = db.prepare('UPDATE TASKS SET title = ? WHERE id = ?');
-    const stmt_done = db.prepare('UPDATE TASKS SET done = ? WHERE id = ?');
-
-    if (title != undefined) {
-      stmt_title.run(title, id, (err) => {
-        if (err) {
-          return res.status(500).json({ error: err.message });
-        }
-
-        stmt_title.finalize((err) => {
-          if (err) {
-            return res.status(500).json({ error: err.message });
-          }
-        });
-      });
-    }
-    if (done != undefined) {
-      stmt_done.run(done, id, (err) => {
-        if (err) {
-          return res.status(500).json({ error: err.message });
-        }
-
-        stmt_done.finalize((err) => {
-          if (err) {
-            return res.status(500).json({ error: err.message });
-          }
-        });
-      });
-    }
-
-    res.status(202).json({ message: 'data updated successfully' });
-  });
+app.put('/tasks/:id', async (req, res) => {
+  try {
+    const row = await SQLOperations.updateOne(
+      req.params.id,
+      req.body.title,
+      req.body.done,
+    );
+    res.status(204).json({ row });
+  } catch (e) {
+    res.status(400).json({
+      error: 'Data updation failed.',
+      stacktracce: e,
+    });
+  }
 });
 
 /**
@@ -298,24 +217,16 @@ app.put('/tasks/:id', (req, res) => {
  *       404:
  *         description: Task not found
  */
-app.delete('/tasks/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  db.get('SELECT * FROM TASKS WHERE id = ?', [id], (err, result) => {
-    console.log('error :', err);
-    console.log('result :', result);
-
-    if (err) {
-      return res.status(500).json({ error: err });
-    }
-
-    db.run('DELETE FROM TASKS WHERE id = ?', [id], (err) => {
-      console.log('error :', err);
-      if (err) {
-        return res.status(500).json({ error: err });
-      }
-      res.status(204).json({ message: 'data removed from the db' });
+app.delete('/tasks/:id', async (req, res) => {
+  try {
+    const row = await SQLOperations.deleteOne(req.params.id);
+    res.status(204).json({ row });
+  } catch (e) {
+    res.status(400).json({
+      error: 'Deletion failed.',
+      stacktrace: e,
     });
-  });
+  }
 });
 
 /**
