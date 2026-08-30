@@ -1,29 +1,78 @@
-const sqlite3 = require('sqlite3');
+const { Pool } = require('pg');
+const dotenv = require('dotenv').config();
 
-const db = new sqlite3.Database('./src/db/tasks.db');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    done INTEGER NOT NULL DEFAULT 0
-  )`);
+class SQLOperations {
+  static async init() {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        done BOOLEAN NOT NULL DEFAULT FALSE
+      )
+    `);
 
-  db.get('SELECT COUNT(*) AS count FROM TASKS', [], (err, row) => {
-    if (err) throw err;
+    const { rows } = await pool.query('SELECT COUNT(*) AS count FROM tasks');
 
-    if (row.count == 0) {
-      const insert = db.prepare(
-        'INSERT INTO TASKS (title, done) VALUES (?, ?)',
+    if (Number(rows[0].count) === 0) {
+      await pool.query(
+        `
+        INSERT INTO tasks (title, done)
+        VALUES
+          ($1, $2),
+          ($3, $4),
+          ($5, $6)
+      `,
+        [
+          'Buy groceries',
+          false,
+          'Write PostgreSQL notes',
+          true,
+          'Walk the dog',
+          false,
+        ],
       );
-      insert.run('Buy groceries', 0);
-      insert.run('Write SQLite notes', 1);
-      insert.run('Walk the dog', 0);
-      insert.finalize(() => console.log('Seeded 3 example tasks'));
-    } else {
-      console.log(`Table already has ${row.count} rows — skipping seed`);
-    }
-  });
-});
 
-module.exports = db;
+      console.log('Seeded 3 example tasks');
+    } else {
+      console.log(`Table already has ${rows[0].count} rows — skipping seed`);
+    }
+  }
+
+  static async getAll() {
+    const { rows } = await pool.query('SELECT * FROM tasks');
+    return rows;
+  }
+
+  static async getOne(id) {
+    const { rows } = await pool.query(`SELCET * FROM tasks WHERE id = $1`, [
+      id,
+    ]);
+    return rows[0];
+  }
+
+  static async createOne(title) {
+    const { rows } = await pool.query(
+      `INSERT INTO tasks (title) VALUES ($1) RETURNING *`,
+      [title],
+    );
+
+    return rows[0];
+  }
+
+  static async updateOne(id, title, done) {
+    const { rows } = await pool.query(
+      `UPDATE tasks SET title=COALESCE($1, title) done=COALESCE($2, done) WHERE id=$3 RETURNING *`,
+      [title, done, id],
+    );
+    return rows[0];
+  }
+
+  static async deleteOne(id) {
+    const { rows } = await pool.query(`DELETE FROM tasks WHERE id = $1`, [id]);
+    return rows[0];
+  }
+}
+
+module.exports = { pool, SQLOperations };
