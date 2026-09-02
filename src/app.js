@@ -3,12 +3,56 @@ const morgan = require('morgan');
 const swaggerui = require('swagger-ui-express');
 const openapiSpec = require('./swagger');
 const { SQLOperations } = require('./db/db.js');
+const supabaseClient = require('./supabase.js');
 const app = express();
 
 app.use(express.json());
 app.use(morgan('dev'));
 
 app.use('/docs', swaggerui.serve, swaggerui.setup(openapiSpec));
+
+app.post('/auth/signup', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+
+    return res.status(201).json({
+      user: data.user,
+      access_token: data.session?.access_token,
+      refresh_token: data.session?.refresh_token,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+
+    return res.status(200).json({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  } catch (err) {
+    return res.status(401).json({
+      message: 'Invalid login credentials',
+    });
+  }
+});
 
 /**
  * @swagger
