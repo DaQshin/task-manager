@@ -32,7 +32,7 @@ app.post('/auth/signup', async (req, res) => {
   }
 });
 
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/signin', async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -61,16 +61,26 @@ app.get('/public/info', (req, res) => {
 });
 
 app.get('/protected/profile', (req, res) => {
-  const { auth } = req.headers;
+  console.log(req.headers);
 
-  if (!auth) {
+  const { authorization } = req.headers;
+
+  if (!authorization) {
     return res.status(401).json({ error: 'Access token required ' });
   }
 
-  const access_token = auth.split(' ')[1];
+  const token = authorization.split(' ')[1];
+
+  const { data, error } = supabaseClient.auth.getUser(token);
+
+  if (error) {
+    return res.status(401).json({
+      error: 'Invalid or expired token',
+    });
+  }
 
   return res.status(200).json({
-    access_token,
+    token,
   });
 });
 
