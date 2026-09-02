@@ -54,6 +54,26 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
+app.get('/public/info', (req, res) => {
+  res.status(200).json({
+    message: 'Welcome stranger! This info is public.',
+  });
+});
+
+app.get('/protected/profile', (req, res) => {
+  const { auth } = req.headers;
+
+  if (!auth) {
+    return res.status(401).json({ error: 'Access token required ' });
+  }
+
+  const access_token = auth.split(' ')[1];
+
+  return res.status(200).json({
+    access_token,
+  });
+});
+
 /**
  * @swagger
  * /:
