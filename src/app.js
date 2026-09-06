@@ -13,6 +13,51 @@ app.use(morgan('dev'));
 
 app.use('/docs', swaggerui.serve, swaggerui.setup(openapiSpec));
 
+/**
+ * @swagger
+ * /auth/signup:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: hunter2
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *                 access_token:
+ *                   type: string
+ *                 refresh_token:
+ *                   type: string
+ *       400:
+ *         description: Signup failed (e.g. invalid email, weak password, user already exists)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/auth/signup', async (req, res) => {
   const { email, password } = req.body;
 
@@ -34,6 +79,44 @@ app.post('/auth/signup', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /auth/signin:
+ *   post:
+ *     summary: Sign in an existing user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: hunter2
+ *     responses:
+ *       200:
+ *         description: Signed in successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthTokens'
+ *       401:
+ *         description: Invalid login credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/auth/signin', async (req, res) => {
   const { email, password } = req.body;
 
@@ -57,6 +140,36 @@ app.post('/auth/signin', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Sign out the current user
+ *     tags: [Authentication]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
+ *       500:
+ *         description: Logout failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ */
 app.post('/auth/logout', authMiddleware, async (req, res) => {
   try {
     const { error } = await supabaseClient.auth.signOut();
@@ -73,6 +186,27 @@ app.post('/auth/logout', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /protected/profile:
+ *   post:
+ *     summary: Get the authenticated user's profile
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user's profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
+ */
 app.post('/protected/profile', authMiddleware, (req, res) => {
   return res.status(200).json({
     user: {
@@ -83,6 +217,24 @@ app.post('/protected/profile', authMiddleware, (req, res) => {
   });
 });
 
+/**
+ * @swagger
+ * /public/info:
+ *   get:
+ *     summary: Public informational endpoint
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: Public welcome message
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Welcome stranger! This info is public.
+ */
 app.get('/public/info', (req, res) => {
   res.status(200).json({
     message: 'Welcome stranger! This info is public.',
@@ -94,6 +246,7 @@ app.get('/public/info', (req, res) => {
  * /:
  *   get:
  *     summary: API information
+ *     tags: [System]
  *     responses:
  *       200:
  *         description: API metadata
@@ -109,6 +262,9 @@ app.get('/', (req, res) => {
  * /tasks:
  *   get:
  *     summary: Get all tasks
+ *     tags: [Tasks]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: done
@@ -130,10 +286,12 @@ app.get('/', (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 tasks:
+ *                 result:
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Task'
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
  */
 app.get('/tasks', authMiddleware, async (req, res) => {
   const row = await SQLOperations.getAll();
@@ -147,6 +305,9 @@ app.get('/tasks', authMiddleware, async (req, res) => {
  * /stats:
  *   get:
  *     summary: Task counts
+ *     tags: [Tasks]
+ *     security:
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Total, done, and open task counts
@@ -164,6 +325,8 @@ app.get('/tasks', authMiddleware, async (req, res) => {
  *                 open:
  *                   type: integer
  *                   example: 2
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
  */
 app.get('/stats', authMiddleware, async (req, res) => {
   const row = await SQLOperations.getAll();
@@ -181,6 +344,9 @@ app.get('/stats', authMiddleware, async (req, res) => {
  * /tasks/{id}:
  *   get:
  *     summary: Get task by ID
+ *     tags: [Tasks]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -195,8 +361,10 @@ app.get('/stats', authMiddleware, async (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 task:
+ *                 result:
  *                   $ref: '#/components/schemas/Task'
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
  *       404:
  *         description: Task not found
  */
@@ -212,6 +380,9 @@ app.get('/tasks/:id', authMiddleware, async (req, res) => {
  * /tasks:
  *   post:
  *     summary: Create a new task
+ *     tags: [Tasks]
+ *     security:
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -223,6 +394,8 @@ app.get('/tasks/:id', authMiddleware, async (req, res) => {
  *         description: Task created
  *       400:
  *         description: Invalid request
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
  */
 app.post('/tasks', authMiddleware, async (req, res) => {
   try {
@@ -241,6 +414,9 @@ app.post('/tasks', authMiddleware, async (req, res) => {
  * /tasks/{id}:
  *   put:
  *     summary: Update an existing task
+ *     tags: [Tasks]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -258,6 +434,8 @@ app.post('/tasks', authMiddleware, async (req, res) => {
  *         description: Task updated
  *       400:
  *         description: Invalid request
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
  *       404:
  *         description: Task not found
  */
@@ -282,6 +460,9 @@ app.put('/tasks/:id', authMiddleware, async (req, res) => {
  * /tasks/{id}:
  *   delete:
  *     summary: Delete a task
+ *     tags: [Tasks]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -291,6 +472,8 @@ app.put('/tasks/:id', authMiddleware, async (req, res) => {
  *     responses:
  *       204:
  *         description: Task deleted
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
  *       404:
  *         description: Task not found
  */
@@ -311,9 +494,18 @@ app.delete('/tasks/:id', authMiddleware, async (req, res) => {
  * /health:
  *   get:
  *     summary: Health check
+ *     tags: [System]
  *     responses:
  *       200:
  *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
  */
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
