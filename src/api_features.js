@@ -5,7 +5,7 @@ class APIFeatures {
     this.query = query;
   }
 
-  async filter(rows) {
+  async filter() {
     const title = this.query.title;
     const done = this.query.done;
     const rows = await SQLOperations.getAll();

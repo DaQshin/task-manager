@@ -4,6 +4,8 @@ const swaggerui = require('swagger-ui-express');
 const openapiSpec = require('./swagger');
 const { SQLOperations } = require('./db/db.js');
 const supabaseClient = require('./supabase.js');
+const APIFeatures = require('./api_features.js');
+const authMiddleware = require('./middleware/auth.js');
 const app = express();
 
 app.use(express.json());
@@ -50,37 +52,40 @@ app.post('/auth/signin', async (req, res) => {
   } catch (err) {
     return res.status(401).json({
       message: 'Invalid login credentials',
+      error: err,
     });
   }
+});
+
+app.post('/auth/logout', authMiddleware, async (req, res) => {
+  try {
+    const { error } = await supabaseClient.auth.signOut();
+
+    if (error) throw error;
+
+    return res.status(200).json({
+      message: 'Logged out successfully',
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: 'Logout failed',
+    });
+  }
+});
+
+app.post('/protected/profile', authMiddleware, (req, res) => {
+  return res.status(200).json({
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      created_at: req.user.created_at,
+    },
+  });
 });
 
 app.get('/public/info', (req, res) => {
   res.status(200).json({
     message: 'Welcome stranger! This info is public.',
-  });
-});
-
-app.get('/protected/profile', (req, res) => {
-  console.log(req.headers);
-
-  const { authorization } = req.headers;
-
-  if (!authorization) {
-    return res.status(401).json({ error: 'Access token required ' });
-  }
-
-  const token = authorization.split(' ')[1];
-
-  const { data, error } = supabaseClient.auth.getUser(token);
-
-  if (error) {
-    return res.status(401).json({
-      error: 'Invalid or expired token',
-    });
-  }
-
-  return res.status(200).json({
-    token,
   });
 });
 
@@ -130,9 +135,7 @@ app.get('/', (req, res) => {
  *                   items:
  *                     $ref: '#/components/schemas/Task'
  */
-app.get('/tasks', async (req, res) => {
-  const queryObj = new APIFeatures(req.query);
-
+app.get('/tasks', authMiddleware, async (req, res) => {
   const row = await SQLOperations.getAll();
   res.json({
     result: row,
@@ -162,7 +165,7 @@ app.get('/tasks', async (req, res) => {
  *                   type: integer
  *                   example: 2
  */
-app.get('/stats', async (req, res) => {
+app.get('/stats', authMiddleware, async (req, res) => {
   const row = await SQLOperations.getAll();
   const total = row.length;
   const done = row.filter((r) => row.done === true).length;
@@ -197,7 +200,7 @@ app.get('/stats', async (req, res) => {
  *       404:
  *         description: Task not found
  */
-app.get('/tasks/:id', async (req, res) => {
+app.get('/tasks/:id', authMiddleware, async (req, res) => {
   const row = await SQLOperations.getOne(req.params.id);
   res.json({
     result: row,
@@ -221,7 +224,7 @@ app.get('/tasks/:id', async (req, res) => {
  *       400:
  *         description: Invalid request
  */
-app.post('/tasks', async (req, res) => {
+app.post('/tasks', authMiddleware, async (req, res) => {
   try {
     const row = await SQLOperations.createOne(req.body.title);
     res.status(201).json({ row });
@@ -258,7 +261,7 @@ app.post('/tasks', async (req, res) => {
  *       404:
  *         description: Task not found
  */
-app.put('/tasks/:id', async (req, res) => {
+app.put('/tasks/:id', authMiddleware, async (req, res) => {
   try {
     const row = await SQLOperations.updateOne(
       req.params.id,
@@ -291,7 +294,7 @@ app.put('/tasks/:id', async (req, res) => {
  *       404:
  *         description: Task not found
  */
-app.delete('/tasks/:id', async (req, res) => {
+app.delete('/tasks/:id', authMiddleware, async (req, res) => {
   try {
     const row = await SQLOperations.deleteOne(req.params.id);
     res.status(204).json({ row });
